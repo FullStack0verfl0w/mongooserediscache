@@ -1,59 +1,53 @@
-const mongoose = require('mongoose');
 const redis = require('redis');
 const util = require('util');
-// const keys = require('../configs/keys')
 
+module.exports = function (mongoose, redisClient) {
+    // create reference for .exec
+    const exec = mongoose.Query.prototype.exec;
+    const client = redis.createClient(redisClient || "redis://127.0.0.1:6379");
+    client.hget = util.promisify(client.hget);
 
-module.exports = function(mongoose, redisClient){
-// create reference for .exec
+    // create new cache function on prototype
+    mongoose.Query.prototype.cache = function (options) {
+        this.useCache = true;
+        if (options) {
+            this.expire = options.expire;
+        } else {
+            this.expire = 60;
+        }
+        this.hashKey = JSON.stringify(options?.key || this.mongooseCollection.name);
 
-const exec = mongoose.Query.prototype.exec;
-const client = redis.createClient(redisClient || "redis://127.0.0.1:6379");
-client.hget = util.promisify(client.hget);
+        return this;
+    }
 
-// create new cache function on prototype
-mongoose.Query.prototype.cache = function(options) {
-  this.useCache = true;
-  if(options){
-  this.expire = options.expire;
-  }
-  else {this.expire = 60;}
-  this.hashKey = JSON.stringify(options.key || this.mongooseCollection.name);
+    // override exec function to first check cache for data
+    mongoose.Query.prototype.exec = async function () {
+        if (!this.useCache) {
+            return await exec.apply(this, arguments);
+        }
 
-  return this;
-}
+        const key = JSON.stringify({
+            ...this.getQuery(),
+            collection: this.mongooseCollection.name
+        });
 
-// override exec function to first check cache for data
-mongoose.Query.prototype.exec = async function() {
-  if (!this.useCache) {
-    return await exec.apply(this, arguments);
-  }
+        // get cached value from redis
+        const cached = await client.hget(this.hashKey, key);
 
-  const key = JSON.stringify({
-    ...this.getQuery(),
-    collection: this.mongooseCollection.name
-  });
+        // if cache value is not found, fetch data from mongodb and cache it
+        if (!cached) {
+            const result = await exec.apply(this, arguments);
+            client.hset(this.hashKey, key, JSON.stringify(result));
+            client.expire(this.hashKey, this.expire);
 
-  // get cached value from redis
-  const cached = await client.hget(this.hashKey, key);
+            return result;
+        }
 
-  // if cache value is not found, fetch data from mongodb and cache it
-  if (!cached) {
-    const result = await exec.apply(this, arguments);
-    client.hset(this.hashKey, key, JSON.stringify(result));
-    client.expire(this.hashKey, this.expire);
+        // return found cachedValue
+        const doc = JSON.parse(cached);
 
-    return result;
-  }
-
-  // return found cachedValue
-  const doc = JSON.parse(cached);
-
-  return Array.isArray(doc)
-    ? doc.map(d => new this.model(d))
-    : new this.model(doc);
+        return Array.isArray(doc)
+            ? doc.map(d => new this.model(d))
+            : new this.model(doc);
+    };
 };
-}
-
-
- 
