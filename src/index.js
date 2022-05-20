@@ -5,7 +5,6 @@ module.exports = function (mongoose, redisClient) {
     // create reference for .exec
     const exec = mongoose.Query.prototype.exec;
     const client = redis.createClient(redisClient || "redis://127.0.0.1:6379");
-    client.hget = util.promisify(client.get);
 
     // create new cache function on prototype
     mongoose.Query.prototype.cache = function (options) {
