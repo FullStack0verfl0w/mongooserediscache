@@ -5,7 +5,7 @@ module.exports = function (mongoose, redisClient) {
     // create reference for .exec
     const exec = mongoose.Query.prototype.exec;
     const client = redis.createClient(redisClient || "redis://127.0.0.1:6379");
-    client.hget = util.promisify(client.hget);
+    client.hget = util.promisify(client.get);
 
     // create new cache function on prototype
     mongoose.Query.prototype.cache = function (options) {
@@ -32,13 +32,13 @@ module.exports = function (mongoose, redisClient) {
         });
 
         // get cached value from redis
-        const cached = await client.hget(this.hashKey, key);
+        const cached = await client.get(key);
 
         // if cache value is not found, fetch data from mongodb and cache it
         if (!cached) {
             const result = await exec.apply(this, arguments);
-            client.hset(this.hashKey, key, JSON.stringify(result));
-            client.expire(this.hashKey, this.expire);
+            client.set(key, JSON.stringify(result));
+            client.expire(key, this.expire);
 
             return result;
         }
