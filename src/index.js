@@ -1,10 +1,29 @@
 const redis = require('redis');
 const util = require('util');
 
-module.exports = function (mongoose, redisClient) {
+module.exports = function (mongoose, redisClient, log) {
     // create reference for .exec
     const exec = mongoose.Query.prototype.exec;
     const client = redis.createClient(redisClient || "redis://127.0.0.1:6379");
+    client.on("connect", () => {
+        const message = "Connected to redis.";
+        if ( log ) {
+            log.info(message);
+        }
+        else {
+            console.log(message);
+        }
+    });
+    client.on("connect", (err) => {
+        const message = `Failed to connect to redis: ${err}`;
+        if ( log ) {
+            log.error(err);
+        }
+        else {
+            console.log(err);
+        }
+    });
+    client.connect();
 
     // create new cache function on prototype
     mongoose.Query.prototype.cache = function (options) {
