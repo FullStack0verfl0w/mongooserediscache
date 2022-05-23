@@ -14,13 +14,13 @@ module.exports = function (mongoose, redisClient, log) {
             console.log(message);
         }
     });
-    client.on("connect", (err) => {
+    client.on("error", (err) => {
         const message = `Failed to connect to redis: ${err}`;
         if ( log ) {
-            log.error(err);
+            log.error(message);
         }
         else {
-            console.log(err);
+            console.log(message);
         }
     });
     client.connect();
