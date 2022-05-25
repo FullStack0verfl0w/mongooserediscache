@@ -41,8 +41,24 @@ module.exports = function (mongoose, client) {
 
         const doc = JSON.parse(cached);
 
+        const createDoc = (doc) => {
+            const rec = new this.model(doc);
+            const save = rec.save;
+
+            // It's not new if we found this in cache
+            rec.isNew = false;
+
+            // Replace cache on save
+            rec.save = function () {
+                client.set(key, JSON.stringify(this));
+                client.expire(key, expire);
+                save.apply(this, arguments);
+            };
+            return rec;
+        };
+
         return Array.isArray(doc)
-            ? doc.map(d => new this.model(d))
-            : new this.model(doc);
+            ? doc.map(createDoc)
+            : createDoc(doc);
     };
 };
